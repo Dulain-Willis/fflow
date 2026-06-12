@@ -5,24 +5,41 @@ An agnostic data loader: any source → any destination. Modeled on dlt and Airb
 ## Pipeline
 
 ```python
-from fflow.pipeline import Pipeline
-from fflow.sources.sql import SQLSource
-from fflow.destinations.mssql import MSSQLDestination
-from fflow.common.config import StreamConfig
-from fflow.common.state import SqlStateStore
+import os
+from fflow import pipeline, stream
+from fflow.sources.rest import rest, RestStreamConfig, BearerTokenAuth
+from fflow.destinations.redshift import redshift
 
-pipeline = Pipeline(
-    name="postgres_to_mssql",
-    source=SQLSource(connection_string="postgresql://user:pass@host/db"),
-    destination=MSSQLDestination(connection_string="mssql+pyodbc://..."),
-    state_store=SqlStateStore(connection_string="mssql+pyodbc://..."),
-    streams=[
-        StreamConfig(name="orders", write_disposition="merge", merge_key=["order_id"]),
-        StreamConfig(name="customers", write_disposition="append"),
-    ],
+@pipeline(
+    source=rest(
+        "https://api.example.com/v1",
+        auth=BearerTokenAuth(token=os.environ["API_TOKEN"]),
+    ),
+    destination=redshift(
+        url=os.environ["REDSHIFT_URL"],
+        schema="raw_data",
+    ),
 )
+def my_pipeline():
 
-pipeline.run()
+    @stream()
+    def orders():
+        return RestStreamConfig(
+            endpoint="/orders",
+            data_path="orders",
+            write_disposition="merge",
+            merge_key=["order_id"],
+        )
+
+    @stream()
+    def customers():
+        return RestStreamConfig(
+            endpoint="/customers",
+            data_path="customers",
+        )
+
+
+my_pipeline.run()
 ```
 
 ## Quickstart
